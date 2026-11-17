@@ -1,0 +1,822 @@
+<!DOCTYPE html>
+<html lang="ms-MY">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<base target="_top">
+<title>PIALA GURU BESAR SK SUNGAI TIRAM</title>
+<style>
+:root{color-scheme:light;--navy:#102446;--red:#b91c37;--line:#d8e1ec;--muted:#4c5e75;--paper:#fff}
+*{box-sizing:border-box}body{margin:0;background:#f3f6fa;color:var(--navy);font:16px/1.5 system-ui,sans-serif}
+[hidden]{display:none!important}header{background:var(--navy);color:white;border-bottom:5px solid var(--red)}
+.wrap{width:min(1120px,calc(100% - 32px));margin:auto}.mast{padding:28px 0}.mast p{margin:0 0 3px;color:#d6e0ef;font-weight:700;letter-spacing:.09em}
+h1,h2,h3,p{margin-top:0}h1{font-size:clamp(1.75rem,5vw,3rem);line-height:1.05;margin-bottom:0}h2{font-size:1.35rem;margin-bottom:12px}h3{margin-bottom:9px}
+main.wrap{padding:20px 0 45px}.panel,.match{background:var(--paper);border:1px solid var(--line);border-radius:15px;padding:18px;margin-bottom:15px}
+#login{max-width:460px;margin:0 auto}.grid,.filters,.cards{display:grid;gap:12px}.grid,.filters{grid-template-columns:repeat(auto-fit,minmax(min(100%,175px),1fr))}
+.cards{grid-template-columns:repeat(auto-fit,minmax(min(100%,290px),1fr))}.match{margin:0;display:flex;flex-direction:column;gap:9px}
+label{display:block;font-size:.9rem;font-weight:700}input,select,button{font:inherit;color:inherit}
+input,select{width:100%;min-height:44px;padding:8px 10px;border:1px solid #9caec2;border-radius:8px;background:white;margin-top:4px}
+input[readonly]{background:#eef2f8}button{min-height:44px;padding:8px 13px;cursor:pointer;border:1px solid var(--line);border-radius:8px;background:white;font-weight:700}
+button.primary{background:var(--red);border-color:var(--red);color:white}button:disabled{opacity:.55;cursor:wait}:focus-visible{outline:3px solid #2563eb;outline-offset:2px}
+.actions,.bar,.tabs{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.actions{margin-top:12px}.bar{justify-content:space-between;margin-bottom:12px}.bar h2{margin:0}
+.tabs{margin-bottom:14px}.tabs button[aria-current="page"]{background:var(--navy);color:white;border-color:var(--navy)}
+.notice{margin-bottom:12px;padding:9px 12px;border-radius:8px;background:#e8f0ff;overflow-wrap:anywhere}.notice:empty{display:none}.notice.error{background:#fee9ed;color:#8f122a}.notice.success{background:#e3f4eb;color:#145e41}
+.muted,.empty{color:var(--muted)}.empty{margin:12px 0 0}.tag{align-self:flex-start;border-radius:16px;padding:3px 10px;background:#eef2f8;font-size:.82rem;font-weight:750}.tag.done{background:#e3f4eb;color:#145e41}.tag.scheduled{background:#e5efff;color:#143e76}
+.scoreline{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:7px;text-align:center;font-weight:750;overflow-wrap:anywhere}
+.score{background:var(--navy);border-radius:8px;color:white;padding:4px 10px;font-size:1.2rem;white-space:nowrap}.match p{margin:0}.match button{align-self:flex-start;margin-top:auto}
+.scroll{overflow:auto}table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}th,td{border-bottom:1px solid var(--line);text-align:left;padding:8px 10px;overflow-wrap:anywhere}thead{background:#eaf0f8}td .actions{margin:0}
+dialog{max-width:min(570px,calc(100% - 24px));width:100%;max-height:90vh;border:1px solid var(--line);border-radius:15px;color:var(--navy);padding:20px}dialog::backdrop{background:#0b1937a8}
+#printArea{display:none}
+@page{size:A4 portrait;margin:12mm}
+@media print{
+  body{background:white;color:#111;font:10pt/1.3 Arial,sans-serif}
+  body>*:not(#printArea){display:none!important}#printArea{display:block}
+  #printArea h1{font-size:17pt;margin:0 0 4mm}#printArea h2{font-size:13pt;margin:0 0 2mm}
+  #printArea table{table-layout:fixed}#printArea thead{display:table-header-group}
+  #printArea tr{break-inside:avoid}#printArea th,#printArea td{border:1px solid #999;padding:2mm}
+}
+</style>
+</head>
+<body>
+<header><div class="wrap mast"><p>KEJOHANAN ANTARA KELAS</p><h1>PIALA GURU BESAR<br>SK SUNGAI TIRAM</h1></div></header>
+<main class="wrap">
+  <div id="notice" class="notice" role="status" aria-live="polite"></div>
+  <section id="login" class="panel" hidden>
+    <h2>Log Masuk</h2>
+    <form id="loginForm">
+      <label>Nama pengguna<input name="username" autocomplete="username" maxlength="60" required></label>
+      <label>Kata laluan<input name="password" type="password" autocomplete="current-password" required></label>
+      <div class="actions"><button class="primary">Log Masuk</button></div>
+    </form>
+  </section>
+  <section id="retry" class="panel" hidden><button id="retryButton">Cuba Muat Semula</button></section>
+  <section id="app" hidden>
+    <div class="bar"><strong id="identity"></strong><div class="actions"><button id="refresh">Muat Semula</button><button id="logout">Log Keluar</button></div></div>
+    <nav id="tabs" class="tabs" aria-label="Menu kejohanan">
+      <button data-view="players" aria-current="page">Daftar Pemain</button>
+      <button data-view="matches">Jadual &amp; Keputusan</button>
+      <button data-view="standings">Kedudukan</button>
+    </nav>
+    <div class="panel filters">
+      <label id="yearLabel">Tahun<select id="year"></select></label>
+      <label id="classLabel">Kelas<select id="classFilter"></select></label>
+      <label>Kategori<select id="category"></select></label>
+    </div>
+    <section id="players" class="panel">
+      <div class="bar"><h2>Senarai Pemain</h2><button id="addPlayer" class="primary">Tambah Pemain</button></div>
+      <div class="actions" data-reports="players"></div>
+      <div id="playerList"></div>
+    </section>
+    <section id="matches" class="panel" hidden>
+      <div class="bar"><h2>Jadual &amp; Keputusan</h2><button id="generate" class="primary" hidden>Jana Perlawanan</button></div>
+      <div class="actions">
+        <label>Laporan<select id="matchReport"><option value="schedule">Jadual Perlawanan</option><option value="results">Keputusan Perlawanan</option></select></label>
+        <div class="actions" data-reports="matches"></div>
+      </div>
+      <p id="matchCount" class="muted"></p>
+      <div id="matchList" class="cards"></div>
+    </section>
+    <section id="standings" class="panel" hidden>
+      <h2>Kedudukan Liga</h2>
+      <div class="actions" data-reports="standings"></div>
+      <p class="muted">Menang 3 mata, seri 1 mata, kalah 0 mata.</p>
+      <div id="standingList"></div>
+    </section>
+  </section>
+</main>
+<dialog id="editor" aria-labelledby="editorTitle">
+  <h2 id="editorTitle"></h2>
+  <p id="editNotice" class="notice error" role="alert"></p>
+  <form id="editForm">
+    <div id="playerFields" class="grid" hidden>
+      <label>Kelas<select id="editClass"></select><input id="fixedClass" readonly hidden></label>
+      <label>Kategori<select id="editCategory"></select></label>
+      <label>Nama penuh pemain<input id="editName" maxlength="150"></label>
+      <label>Nombor jersi (pilihan)<input id="editJersey" inputmode="numeric" pattern="[0-9]{1,2}" maxlength="2"></label>
+    </div>
+    <div id="matchFields" class="grid" hidden>
+      <label>Tarikh<input id="editDate" type="date"></label>
+      <label>Masa<input id="editTime" type="time"></label>
+      <label>Gelanggang<input id="editVenue" maxlength="100"></label>
+      <label><span id="scoreLabelA"></span><input id="editScoreA" inputmode="numeric" pattern="[0-9]{1,3}" maxlength="3"></label>
+      <label><span id="scoreLabelB"></span><input id="editScoreB" inputmode="numeric" pattern="[0-9]{1,3}" maxlength="3"></label>
+    </div>
+    <div class="actions"><button type="submit" class="primary">Simpan</button><button type="button" id="cancelEdit">Batal</button></div>
+  </form>
+</dialog>
+<dialog id="confirmation" aria-labelledby="confirmTitle">
+  <h2 id="confirmTitle">Pengesahan</h2>
+  <p id="confirmText" style="white-space:pre-line"></p>
+  <form method="dialog" class="actions">
+    <button value="no" autofocus>Batal</button><button id="confirmYes" value="yes" class="primary">Teruskan</button>
+  </form>
+</dialog>
+<section id="printArea" aria-label="Paparan cetak"></section>
+<script>
+'use strict';
+
+const TITLE = 'PIALA GURU BESAR SK SUNGAI TIRAM';
+const CATEGORIES = [
+  ['BOLA_SEPAK_LELAKI', 'Bola Sepak Lelaki'],
+  ['BOLA_BALING_PEREMPUAN', 'Bola Baling Perempuan']
+];
+const YEARS = Array.from({length: 6}, (_, i) => [String(i + 1), 'Tahun ' + (i + 1)]);
+const SESSION = 'pgb-skst-session';
+const SESSION_MS = 7200000;
+const SESSION_ERROR = 'Sila log masuk semula.';
+const $ = id => document.getElementById(id);
+const state = {session: null, data: null, busy: false, view: 'players', edit: null, expiry: 0,
+  years: {players: '1', competition: '1'}, category: CATEGORIES[0][0], kelas: ''};
+const nameOrder = new Intl.Collator('ms-MY', {numeric: true, sensitivity: 'base'});
+
+function node(tag, value, className) {
+  const item = document.createElement(tag);
+  if (value != null) item.textContent = value;
+  if (className) item.className = className;
+  return item;
+}
+
+function button(label, handler) {
+  const item = node('button', label);
+  item.type = 'button';
+  item.addEventListener('click', handler);
+  return item;
+}
+
+function options(select, entries, value) {
+  select.replaceChildren(...entries.map(([key, label]) => new Option(label, key)));
+  if (entries.some(([key]) => key === value)) select.value = value;
+}
+
+function notice(message, style = '') {
+  $('notice').textContent = message;
+  $('notice').className = ('notice ' + style).trim();
+}
+
+function saveSession(session) {
+  state.session = session;
+  clearTimeout(state.expiry);
+  try {
+    if (session) sessionStorage.setItem(SESSION, JSON.stringify(session));
+    else sessionStorage.removeItem(SESSION);
+  } catch (_) {
+    // Sesi dalam memori masih boleh digunakan jika storan disekat.
+  }
+  if (session) {
+    state.expiry = setTimeout(() => endSession(SESSION_ERROR), Math.max(0, session.until - Date.now()));
+  }
+}
+
+function endSession(message = '', isError = Boolean(message)) {
+  saveSession(null);
+  state.data = null;
+  state.view = 'players';
+  state.kelas = '';
+  state.edit = null;
+  $('editor').close();
+  $('confirmation').close('no');
+  $('editForm').reset();
+  $('loginForm').reset();
+  ['playerList', 'matchList', 'standingList', 'printArea', 'identity'].forEach(id => $(id).replaceChildren());
+  $('app').hidden = true;
+  $('retry').hidden = true;
+  $('login').hidden = false;
+  notice(message, isError ? 'error' : 'success');
+}
+
+function api(action, fields = {}) {
+  return new Promise((resolve, reject) => {
+    const request = {action, ...fields};
+    if (action !== 'login') {
+      if (!state.session || Date.now() >= state.session.until) {
+        endSession(SESSION_ERROR);
+        reject(new Error(SESSION_ERROR));
+        return;
+      }
+      request.token = state.session.token;
+    }
+    if (!globalThis.google?.script?.run) {
+      reject(new Error('Buka sistem melalui pautan web app Google Apps Script.'));
+      return;
+    }
+    google.script.run
+      .withSuccessHandler(response => {
+        if (request.token && request.token !== state.session?.token) {
+          reject(new Error(SESSION_ERROR));
+          return;
+        }
+        if (response?.ok === true) resolve(response.data);
+        else {
+          const message = response?.error || 'Respons pelayan tidak sah.';
+          if (request.token && message === SESSION_ERROR) endSession(message);
+          reject(new Error(message));
+        }
+      })
+      .withFailureHandler(error => reject(new Error(error?.message || 'Sambungan ke pelayan gagal.')))
+      .pialaApi(request);
+  });
+}
+
+async function run(work, inEditor = false) {
+  if (state.busy) return;
+  state.busy = true;
+  $('app').inert = true;
+  $('login').inert = true;
+  $('retry').inert = true;
+  $('editor').inert = true;
+  $('editNotice').textContent = '';
+  notice('Sedang memuatkan…');
+  try {
+    await work();
+  } catch (error) {
+    if (inEditor && $('editor').open) {
+      notice('');
+      $('editNotice').textContent = error.message;
+    } else {
+      notice(error.message, 'error');
+      if (state.session && !state.data) $('retry').hidden = false;
+    }
+  } finally {
+    state.busy = false;
+    ['app', 'login', 'retry', 'editor'].forEach(id => { $(id).inert = false; });
+  }
+}
+
+async function refresh() {
+  state.data = await api('dashboard');
+  $('app').hidden = false;
+  $('login').hidden = true;
+  $('retry').hidden = true;
+  render();
+}
+
+async function commit(action, payload, message) {
+  const result = await api(action, payload);
+  $('editor').close();
+  const confirmed = typeof message === 'function' ? message(result) : message;
+  try {
+    await refresh();
+    notice(confirmed, 'success');
+  } catch (error) {
+    if (state.session) notice(confirmed + ' Gagal memuat semula data. ' + error.message, 'error');
+  }
+}
+
+function currentYear() {
+  return state.years[state.view === 'players' ? 'players' : 'competition'];
+}
+
+function selectedPlayers() {
+  return state.data.players.filter(row => String(row.tahun) === currentYear() &&
+    row.kategori === state.category && (!state.kelas || row.kelas === state.kelas) &&
+    (state.data.user.admin || row.kelas === state.data.user.kelas))
+    .sort((a, b) => nameOrder.compare(a.kelas, b.kelas) || nameOrder.compare(a.nama, b.nama));
+}
+
+function selectedMatches() {
+  return state.data.matches.filter(row => String(row.tahun) === currentYear() && row.kategori === state.category)
+    .sort((a, b) => nameOrder.compare(a.tarikh || '9999', b.tarikh || '9999') ||
+      nameOrder.compare(a.masa || '99:99', b.masa || '99:99') ||
+      nameOrder.compare(a.pasukanA, b.pasukanA) || nameOrder.compare(a.pasukanB, b.pasukanB));
+}
+
+const hasScore = score => score != null && /^\d{1,3}$/.test(String(score));
+const completed = match => hasScore(match.skorA) && hasScore(match.skorB);
+const matchScore = match => completed(match) ? match.skorA + ' – ' + match.skorB : '—';
+function matchStatus(match) {
+  if (completed(match)) return 'Selesai';
+  return match.tarikh && match.masa ? 'Dijadualkan' : 'Belum dijadualkan';
+}
+
+const dateFormat = new Intl.DateTimeFormat('ms-MY', {
+  day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Kuala_Lumpur'
+});
+function localDate(value) {
+  return value ? dateFormat.format(new Date(value + 'T00:00:00+08:00')) : '—';
+}
+
+function localTime(value) {
+  if (!value) return '—';
+  const [hour, minute] = value.split(':');
+  const h = Number(hour);
+  const period = h < 12 ? 'pagi' : h < 14 ? 'tengah hari' : h < 19 ? 'petang' : 'malam';
+  return (h % 12 || 12) + '.' + minute + ' ' + period;
+}
+
+function standings(matches) {
+  const teams = new Map();
+  for (const match of matches) {
+    for (const team of [match.pasukanA, match.pasukanB]) {
+      if (!teams.has(team)) teams.set(team, {
+        team, played: 0, wins: 0, draws: 0, losses: 0, goals: 0, conceded: 0, difference: 0, points: 0
+      });
+    }
+    if (!completed(match)) continue;
+    const a = Number(match.skorA), b = Number(match.skorB);
+    for (const [name, goals, conceded] of [[match.pasukanA, a, b], [match.pasukanB, b, a]]) {
+      const team = teams.get(name);
+      team.played++;
+      team.goals += goals;
+      team.conceded += conceded;
+      team.difference += goals - conceded;
+      if (goals > conceded) { team.wins++; team.points += 3; }
+      else if (goals === conceded) { team.draws++; team.points++; }
+      else team.losses++;
+    }
+  }
+  const byResult = (a, b) => b.points - a.points || b.difference - a.difference || b.goals - a.goals;
+  const ranking = [...teams.values()].sort((a, b) => byResult(a, b) || nameOrder.compare(a.team, b.team));
+  let rank = 0;
+  return ranking.map((team, i) => {
+    if (!i || byResult(ranking[i - 1], team) !== 0) rank = i + 1;
+    return {...team, rank};
+  });
+}
+
+function makeTable(headers, rows, caption, widths) {
+  const table = node('table');
+  table.setAttribute('aria-label', caption);
+  if (widths) {
+    const columns = node('colgroup');
+    widths.forEach(width => {
+      const col = node('col');
+      col.style.width = width + '%';
+      columns.append(col);
+    });
+    table.append(columns);
+  }
+  const head = node('tr');
+  headers.forEach(header => {
+    const cell = node('th', header);
+    cell.scope = 'col';
+    head.append(cell);
+  });
+  const thead = node('thead');
+  thead.append(head);
+  const body = node('tbody');
+  for (const values of rows) {
+    const row = node('tr');
+    for (const value of values) {
+      const cell = node('td');
+      if (value instanceof Node) cell.append(value);
+      else cell.textContent = value;
+      row.append(cell);
+    }
+    body.append(row);
+  }
+  table.append(thead, body);
+  return table;
+}
+
+function showTable(container, headers, rows, title, empty) {
+  container.className = rows.length ? 'scroll' : '';
+  if (rows.length) container.replaceChildren(makeTable(headers, rows, title));
+  else container.replaceChildren(node('p', empty, 'empty'));
+}
+
+function render() {
+  const {user, classes} = state.data;
+  const isRoster = state.view === 'players';
+  const ownClass = classes.find(row => row.kelas === user.kelas);
+  if (!user.admin && ownClass) state.years.players = String(ownClass.tahun);
+  $('identity').textContent = user.admin ? 'Admin · ' + user.username : 'Guru Kelas · ' + user.kelas;
+  $('yearLabel').hidden = isRoster && !user.admin;
+  $('classLabel').hidden = !isRoster;
+  options($('year'), YEARS, currentYear());
+  options($('category'), CATEGORIES, state.category);
+  const choices = classes.filter(row => String(row.tahun) === currentYear())
+    .sort((a, b) => nameOrder.compare(a.kelas, b.kelas)).map(row => [row.kelas, row.kelas]);
+  if (isRoster) {
+    if (!user.admin) state.kelas = user.kelas;
+    options($('classFilter'), user.admin ? [['', 'Semua kelas'], ...choices] : [[user.kelas, user.kelas]], state.kelas);
+    $('classFilter').disabled = !user.admin;
+    state.kelas = $('classFilter').value;
+    $('addPlayer').disabled = user.admin ? !choices.length : !ownClass;
+  }
+
+  $('tabs').querySelectorAll('button').forEach(item => {
+    if (item.dataset.view === state.view) item.setAttribute('aria-current', 'page');
+    else item.removeAttribute('aria-current');
+  });
+  for (const view of ['players', 'matches', 'standings']) $(view).hidden = state.view !== view;
+  if (isRoster) renderPlayers();
+  else if (state.view === 'matches') renderMatches();
+  else {
+    const report = reportData('standings');
+    showTable($('standingList'), report.headers, report.rows, report.title, report.empty);
+    if (report.rows.length) $('standingList').append(node('p', report.note, 'muted'));
+  }
+}
+
+function confirmAction(message, label, action) {
+  const dialog = $('confirmation');
+  $('confirmText').textContent = message;
+  $('confirmYes').textContent = label;
+  dialog.returnValue = 'no';
+  dialog.addEventListener('close', () => {
+    $('confirmText').textContent = '';
+    if (dialog.returnValue === 'yes' && state.session) run(action);
+  }, {once: true});
+  dialog.showModal();
+}
+
+function renderPlayers() {
+  const rows = selectedPlayers().map((row, index) => {
+    const actions = node('div', null, 'actions');
+    actions.append(button('Edit', () => openPlayer(row)), button('Padam', () => {
+      confirmAction('Padam pemain ' + row.nama + ' daripada senarai?', 'Padam Pemain',
+        () => commit('deletePlayer', {id: row.id}, 'Pemain dipadam.'));
+    }));
+    return [...playerRow(row, index), actions];
+  });
+  showTable($('playerList'), ['Bil.', 'Kelas', 'Nama pemain', 'Jersi', 'Tindakan'], rows,
+    'Senarai Pemain', 'Tiada pemain dalam pilihan ini.');
+}
+
+function renderMatches() {
+  const matches = selectedMatches();
+  $('generate').hidden = !state.data.user.admin;
+  $('matchCount').textContent = matches.length + ' perlawanan · ' + matches.filter(completed).length + ' selesai';
+  if (!matches.length) {
+    $('matchList').replaceChildren(node('p', 'Tiada perlawanan untuk pilihan ini.', 'empty'));
+    return;
+  }
+  $('matchList').replaceChildren(...matches.map(match => {
+    const card = node('article', null, 'match');
+    const score = node('div', null, 'scoreline');
+    score.append(node('span', match.pasukanA), node('span', matchScore(match), 'score'), node('span', match.pasukanB));
+    const style = completed(match) ? ' done' : match.tarikh && match.masa ? ' scheduled' : '';
+    const when = [match.tarikh && localDate(match.tarikh), match.masa && localTime(match.masa), match.gelanggang].filter(Boolean);
+    card.append(node('span', matchStatus(match), 'tag' + style), score,
+      node('p', when.join(' · ') || 'Butiran jadual belum diisi.', 'muted'));
+    if (state.data.user.admin) card.append(button('Kemas Kini', () => openMatch(match)));
+    return card;
+  }));
+}
+
+function openEditor(type, id, title) {
+  state.edit = {type, id};
+  $('editorTitle').textContent = title;
+  $('editNotice').textContent = '';
+  for (const [field, active] of [['playerFields', type === 'player'], ['matchFields', type === 'match']]) {
+    $(field).hidden = !active;
+    $(field).querySelectorAll('input,select').forEach(control => { control.disabled = !active; });
+  }
+}
+
+function openPlayer(row) {
+  const {user, classes} = state.data;
+  openEditor('player', row?.id, row ? 'Edit Pemain' : 'Tambah Pemain');
+  const classOptions = classes.slice().sort((a, b) => Number(a.tahun) - Number(b.tahun) ||
+    nameOrder.compare(a.kelas, b.kelas)).map(item => [item.kelas, 'Tahun ' + item.tahun + ' · ' + item.kelas]);
+  const defaultClass = row?.kelas || state.kelas ||
+    classes.find(item => String(item.tahun) === currentYear())?.kelas;
+  options($('editClass'), classOptions, defaultClass);
+  $('editClass').hidden = !user.admin;
+  $('editClass').disabled = !user.admin;
+  $('fixedClass').hidden = user.admin;
+  $('fixedClass').value = user.kelas;
+  options($('editCategory'), CATEGORIES, row?.kategori || state.category);
+  $('editName').value = row?.nama || '';
+  $('editName').required = true;
+  $('editJersey').value = row?.nomborJersi ?? '';
+  $('editor').showModal();
+  $('editName').focus();
+}
+
+function openMatch(match) {
+  openEditor('match', match.id, 'Kemas Kini Perlawanan');
+  $('editDate').value = match.tarikh;
+  $('editTime').value = match.masa;
+  $('editVenue').value = match.gelanggang;
+  $('scoreLabelA').textContent = 'Skor ' + match.pasukanA;
+  $('scoreLabelB').textContent = 'Skor ' + match.pasukanB;
+  $('editScoreA').value = match.skorA ?? '';
+  $('editScoreB').value = match.skorB ?? '';
+  $('editor').showModal();
+}
+
+$('editForm').addEventListener('submit', event => {
+  event.preventDefault();
+  const {type, id} = state.edit;
+  if (type === 'player') {
+    const kelas = state.data.user.admin ? $('editClass').value : state.data.user.kelas;
+    const kategori = $('editCategory').value;
+    const payload = {kelas, kategori, nama: $('editName').value.trim(), nomborJersi: $('editJersey').value};
+    if (id) payload.id = id;
+    run(() => commit('savePlayer', payload, 'Pemain disimpan.'), true);
+  } else {
+    const skorA = $('editScoreA').value;
+    const skorB = $('editScoreB').value;
+    if ((skorA === '') !== (skorB === '')) {
+      $('editNotice').textContent = 'Masukkan kedua-dua skor atau kosongkan kedua-duanya.';
+      return;
+    }
+    const payload = {id, skorA, skorB, tarikh: $('editDate').value, masa: $('editTime').value,
+      gelanggang: $('editVenue').value.trim()};
+    run(() => commit('updateMatch', payload, 'Perlawanan dikemas kini.'), true);
+  }
+});
+
+$('generate').addEventListener('click', () => {
+  const tahun = Number(currentYear()), kategori = state.category;
+  const registered = new Set(state.data.players.filter(row => Number(row.tahun) === tahun && row.kategori === kategori)
+    .map(row => row.kelas));
+  const missing = state.data.classes.filter(row => Number(row.tahun) === tahun && !registered.has(row.kelas))
+    .map(row => row.kelas);
+  let message = 'Pastikan semua kelas yang bertanding telah selesai mendaftar. ' +
+    registered.size + ' kelas berdaftar untuk pilihan ini.';
+  if (missing.length) message += '\nTiada pemain berdaftar: ' + missing.join(', ') + '.';
+  confirmAction(message, 'Jana Perlawanan',
+    () => commit('generateMatches', {tahun, kategori}, result => result.jumlah + ' perlawanan dijana.'));
+});
+
+function playerRow(row, index) {
+  return [index + 1, row.kelas, row.nama, row.nomborJersi === '' || row.nomborJersi == null ? '—' : row.nomborJersi];
+}
+
+function reportData(kind) {
+  const subtitle = 'Tahun ' + currentYear() + ' · ' + CATEGORIES.find(([key]) => key === state.category)[1];
+  if (kind === 'players') {
+    return {
+      title: 'Senarai Pemain', subtitle: subtitle + ' · ' + (state.kelas || 'Semua kelas'),
+      headers: ['Bil.', 'Kelas', 'Nama pemain', 'Jersi'], widths: [8, 21, 59, 12],
+      rows: selectedPlayers().map(playerRow), empty: 'Tiada pemain dalam pilihan ini.'
+    };
+  }
+  const matches = selectedMatches();
+  if (kind === 'standings') {
+    return {
+      title: 'Kedudukan Liga', subtitle,
+      headers: ['Ked.', 'Kelas', 'Main', 'M', 'S', 'K', 'JJ', 'JB', 'BJ', 'Mata'],
+      widths: [8, 27, 8, 6, 6, 6, 7, 7, 7, 18],
+      rows: standings(matches).map(team => [team.rank, team.team, team.played, team.wins, team.draws,
+        team.losses, team.goals, team.conceded, team.difference, team.points]),
+      empty: 'Kedudukan akan dipaparkan selepas jadual dijana.',
+      note: 'M = Menang, S = Seri, K = Kalah, JJ = Jumlah jaringan, JB = Jaringan bolos, BJ = Beza jaringan.'
+    };
+  }
+  const results = kind === 'results';
+  const rows = results ? matches.filter(completed) : matches;
+  return {
+    title: results ? 'Keputusan Perlawanan' : 'Jadual Perlawanan', subtitle,
+    headers: ['Pasukan A', 'Pasukan B', 'Tarikh', 'Masa', 'Gelanggang', results ? 'Skor' : 'Status'],
+    widths: [17, 17, 17, 14, 17, 18],
+    rows: rows.map(match => [match.pasukanA, match.pasukanB, localDate(match.tarikh), localTime(match.masa),
+      match.gelanggang || '—', results ? matchScore(match) : matchStatus(match)]),
+    empty: results ? 'Tiada keputusan perlawanan untuk pilihan ini.' : 'Tiada perlawanan untuk pilihan ini.'
+  };
+}
+
+function printReport(report) {
+  const printArea = $('printArea');
+  printArea.replaceChildren(node('h1', TITLE), node('h2', report.title), node('p', report.subtitle));
+  printArea.append(report.rows.length ? makeTable(report.headers, report.rows, report.title, report.widths) :
+    node('p', report.empty));
+  if (report.note && report.rows.length) printArea.append(node('p', report.note));
+  window.print();
+}
+
+window.addEventListener('afterprint', () => $('printArea').replaceChildren());
+
+// Lukis laporan mengikut halaman A4 agar semua aksara nama dipaparkan dalam PDF.
+function pdfPages(report) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 1190;
+  canvas.height = 1684;
+  const ctx = canvas.getContext('2d', {alpha: false});
+  ctx.scale(2, 2);
+  const left = 35, tableWidth = 525, bottom = 788;
+  const widths = report.widths.map(percent => tableWidth * percent / 100);
+  const pages = [];
+  let y;
+
+  function wrap(value, maxWidth) {
+    const lines = [];
+    let line = '';
+    for (const word of String(value).split(/\s+/)) {
+      const next = line ? line + ' ' + word : word;
+      if (ctx.measureText(next).width <= maxWidth) {
+        line = next;
+        continue;
+      }
+      if (line) lines.push(line);
+      line = '';
+      for (const letter of word) {
+        if (line && ctx.measureText(line + letter).width > maxWidth) {
+          lines.push(line);
+          line = '';
+        }
+        line += letter;
+      }
+    }
+    lines.push(line);
+    return lines;
+  }
+
+  function drawText(text, x, baseline, font, color = '#102446') {
+    ctx.font = font;
+    ctx.fillStyle = color;
+    ctx.fillText(text, x, baseline);
+  }
+
+  function drawRow(values, heading = false) {
+    const font = (heading ? 'bold ' : '') + '10px Arial';
+    ctx.font = font;
+    const cells = values.map((value, i) => wrap(value, widths[i] - 12));
+    const height = Math.max(...cells.map(lines => lines.length)) * 14 + 10;
+    if (y + height > bottom) {
+      finishPage();
+      startPage();
+    }
+    let x = left;
+    cells.forEach((lines, i) => {
+      ctx.fillStyle = heading ? '#eaf0f8' : '#ffffff';
+      ctx.fillRect(x, y, widths[i], height);
+      ctx.strokeStyle = '#bbc8d8';
+      ctx.lineWidth = 0.45;
+      ctx.strokeRect(x, y, widths[i], height);
+      lines.forEach((line, j) => drawText(line, x + 6, y + 14 + j * 14, font));
+      x += widths[i];
+    });
+    y += height;
+  }
+
+  function startPage() {
+    ctx.fillStyle = 'white';
+    ctx.fillRect(0, 0, 595, 842);
+    ctx.fillStyle = '#b91c37';
+    ctx.fillRect(left, 32, tableWidth, 3);
+    drawText(TITLE, left, 56, 'bold 17px Arial');
+    drawText(report.title, left, 78, 'bold 13px Arial');
+    y = 95;
+    ctx.font = '10px Arial';
+    for (const line of wrap(report.subtitle, tableWidth)) {
+      drawText(line, left, y, '10px Arial', '#4c5e75');
+      y += 13;
+    }
+    y += 4;
+    if (report.rows.length) drawRow(report.headers, true);
+  }
+
+  function finishPage() {
+    drawText('Halaman ' + (pages.length + 1), left, 815, '9px Arial', '#4c5e75');
+    const jpeg = atob(canvas.toDataURL('image/jpeg', 0.92).split(',')[1]);
+    pages.push(Uint8Array.from(jpeg, char => char.charCodeAt(0)));
+  }
+
+  startPage();
+  if (!report.rows.length) drawText(report.empty, left, y + 13, '11px Arial');
+  for (const row of report.rows) drawRow(row);
+  if (report.note && report.rows.length) {
+    ctx.font = '9px Arial';
+    const lines = wrap(report.note, tableWidth);
+    if (y + 12 + lines.length * 12 > bottom) {
+      finishPage();
+      startPage();
+    }
+    lines.forEach((line, i) => drawText(line, left, y + 14 + i * 12, '9px Arial'));
+  }
+  finishPage();
+  return pages;
+}
+
+// Tulis struktur PDF dengan satu imej JPEG untuk setiap halaman.
+function makePdf(pages) {
+  const encoder = new TextEncoder();
+  const parts = [];
+  const offsets = [0];
+  let length = 0;
+
+  function append(value) {
+    const bytes = typeof value === 'string' ? encoder.encode(value) : value;
+    parts.push(bytes);
+    length += bytes.byteLength;
+  }
+
+  function object(id, ...values) {
+    offsets[id] = length;
+    append(id + ' 0 obj\n');
+    values.forEach(append);
+    append('\nendobj\n');
+  }
+
+  append('%PDF-1.4\n');
+  object(1, '<< /Type /Catalog /Pages 2 0 R >>');
+  const kids = pages.map((_, index) => (3 + index * 3) + ' 0 R').join(' ');
+  object(2, '<< /Type /Pages /Count ' + pages.length + ' /Kids [' + kids + '] >>');
+  pages.forEach((jpeg, index) => {
+    const id = 3 + index * 3;
+    object(id, '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /XObject << /Im ' +
+      (id + 1) + ' 0 R >> >> /Contents ' + (id + 2) + ' 0 R >>');
+    object(id + 1, '<< /Type /XObject /Subtype /Image /Width 1190 /Height 1684 /ColorSpace /DeviceRGB ' +
+      '/BitsPerComponent 8 /Filter /DCTDecode /Length ' + jpeg.byteLength + ' >>\nstream\n', jpeg, '\nendstream');
+    const draw = 'q\n595 0 0 842 0 0 cm\n/Im Do\nQ\n';
+    object(id + 2, '<< /Length ' + draw.length + ' >>\nstream\n' + draw + 'endstream');
+  });
+  const xref = length;
+  append('xref\n0 ' + offsets.length + '\n0000000000 65535 f \n');
+  offsets.slice(1).forEach(offset => append(String(offset).padStart(10, '0') + ' 00000 n \n'));
+  append('trailer\n<< /Size ' + offsets.length + ' /Root 1 0 R >>\nstartxref\n' + xref + '\n%%EOF\n');
+  return new Blob(parts, {type: 'application/pdf'});
+}
+
+function downloadReport(report) {
+  const url = URL.createObjectURL(makePdf(pdfPages(report)));
+  const link = node('a');
+  link.href = url;
+  link.target = '_blank';
+  link.download = ('PGB-' + report.title + '-' + report.subtitle)
+    .replace(/[^a-z0-9]+/gi, '-').replace(/-$/, '') + '.pdf';
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
+document.querySelectorAll('[data-reports]').forEach(group => {
+  const report = () => reportData(group.dataset.reports === 'matches' ? $('matchReport').value : group.dataset.reports);
+  group.append(button('Cetak A4', () => printReport(report())), button('Muat Turun PDF', () => {
+    try {
+      downloadReport(report());
+    } catch (error) {
+      console.error(error);
+      notice('PDF gagal dijana. Cuba semula atau gunakan Cetak A4.', 'error');
+    }
+  }));
+});
+
+$('tabs').addEventListener('click', event => {
+  const target = event.target.closest('button[data-view]');
+  if (!target) return;
+  state.view = target.dataset.view;
+  render();
+});
+$('year').addEventListener('change', () => {
+  state.years[state.view === 'players' ? 'players' : 'competition'] = $('year').value;
+  if (state.view === 'players') state.kelas = '';
+  render();
+});
+$('category').addEventListener('change', () => {
+  state.category = $('category').value;
+  render();
+});
+$('classFilter').addEventListener('change', () => {
+  state.kelas = $('classFilter').value;
+  renderPlayers();
+});
+$('addPlayer').addEventListener('click', () => openPlayer());
+$('cancelEdit').addEventListener('click', () => $('editor').close());
+$('editor').addEventListener('cancel', event => {
+  if (state.busy) event.preventDefault();
+});
+function reloadDashboard() {
+  run(async () => {
+    await refresh();
+    notice('');
+  });
+}
+$('refresh').addEventListener('click', reloadDashboard);
+$('retryButton').addEventListener('click', reloadDashboard);
+$('logout').addEventListener('click', () => run(async () => {
+  try {
+    await api('logout');
+    endSession('Anda telah log keluar.', false);
+  } catch (error) {
+    endSession(error.message === SESSION_ERROR ? SESSION_ERROR :
+      'Anda telah log keluar daripada tab ini. Pelayan tidak dapat mengesahkan penamatan sesi.');
+  }
+}));
+
+$('loginForm').addEventListener('submit', event => {
+  event.preventDefault();
+  const form = new FormData(event.currentTarget);
+  run(async () => {
+    const session = await api('login', {username: form.get('username'), password: form.get('password')});
+    saveSession({token: session.token, until: Date.now() + SESSION_MS});
+    $('loginForm').reset();
+    $('login').hidden = true;
+    await refresh();
+    if (!session.user.admin) {
+      state.years.competition = state.years.players;
+      render();
+    }
+    notice('');
+  });
+});
+
+let cached;
+try { cached = JSON.parse(sessionStorage.getItem(SESSION)); } catch (_) {}
+if (cached?.token && Number.isFinite(cached.until) && cached.until > Date.now()) {
+  saveSession(cached);
+  reloadDashboard();
+} else {
+  endSession(cached ? SESSION_ERROR : '');
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && state.session && Date.now() >= state.session.until) endSession(SESSION_ERROR);
+});
+</script>
+</body>
+</html>
