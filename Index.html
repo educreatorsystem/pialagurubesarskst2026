@@ -46,15 +46,16 @@ dialog{max-width:min(570px,calc(100% - 24px));width:100%;max-height:90vh;border:
     <form id="loginForm">
       <label>Nama pengguna<input name="username" autocomplete="username" maxlength="60" required></label>
       <label>Kata laluan<input name="password" type="password" autocomplete="current-password" required></label>
-      <div class="actions"><button class="primary">Log Masuk</button></div>
+      <div class="actions"><button class="primary">Log Masuk</button><button type="button" id="cancelLogin">Batal</button></div>
     </form>
   </section>
+  <p id="alternateAccess" hidden><a id="appsScriptLink">Buka melalui Google Apps Script</a></p>
   <section id="retry" class="panel" hidden><button id="retryButton">Cuba Muat Semula</button></section>
   <section id="app" hidden>
-    <div class="bar"><strong id="identity"></strong><div class="actions"><button id="refresh">Muat Semula</button><button id="logout">Log Keluar</button></div></div>
+    <div class="bar"><strong id="identity"></strong><div class="actions"><button id="refresh">Muat Semula</button><button id="manage">Log Masuk Guru / Admin</button><button id="logout" hidden>Log Keluar</button></div></div>
     <nav id="tabs" class="tabs" aria-label="Menu kejohanan">
-      <button data-view="players" aria-current="page">Daftar Pemain</button>
-      <button data-view="matches">Jadual &amp; Keputusan</button>
+      <button data-view="players" hidden>Daftar Pemain</button>
+      <button data-view="matches" aria-current="page">Jadual &amp; Keputusan</button>
       <button data-view="standings">Kedudukan</button>
     </nav>
     <div class="panel filters">
@@ -120,12 +121,13 @@ const CATEGORIES = [
   ['BOLA_SEPAK_LELAKI', 'Bola Sepak Lelaki'],
   ['BOLA_BALING_PEREMPUAN', 'Bola Baling Perempuan']
 ];
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwvx3MQhWdFwRLuHQst9yhW6Tl2S46JLx0dNkTlFy0rZqxiiK8ulyeQqaJ-wz4uAvvwJw/exec';
 const YEARS = Array.from({length: 6}, (_, i) => [String(i + 1), 'Tahun ' + (i + 1)]);
 const SESSION = 'pgb-skst-session';
 const SESSION_MS = 7200000;
 const SESSION_ERROR = 'Sila log masuk semula.';
 const $ = id => document.getElementById(id);
-const state = {session: null, data: null, busy: false, view: 'players', edit: null, expiry: 0,
+const state = {session: null, data: null, publicData: null, busy: false, view: 'matches', edit: null, expiry: 0,
   years: {players: '1', competition: '1'}, category: CATEGORIES[0][0], kelas: ''};
 const nameOrder = new Intl.Collator('ms-MY', {numeric: true, sensitivity: 'base'});
 
@@ -163,14 +165,14 @@ function saveSession(session) {
     // Sesi dalam memori masih boleh digunakan jika storan disekat.
   }
   if (session) {
-    state.expiry = setTimeout(() => endSession(SESSION_ERROR), Math.max(0, session.until - Date.now()));
+    state.expiry = setTimeout(expireSession, Math.max(0, session.until - Date.now()));
   }
 }
 
 function endSession(message = '', isError = Boolean(message)) {
   saveSession(null);
-  state.data = null;
-  state.view = 'players';
+  state.data = state.publicData;
+  if (state.view === 'players') state.view = 'matches';
   state.kelas = '';
   state.edit = null;
   $('editor').close();
@@ -178,43 +180,61 @@ function endSession(message = '', isError = Boolean(message)) {
   $('editForm').reset();
   $('loginForm').reset();
   ['playerList', 'matchList', 'standingList', 'printArea', 'identity'].forEach(id => $(id).replaceChildren());
-  $('app').hidden = true;
+  $('app').hidden = !state.data;
   $('retry').hidden = true;
-  $('login').hidden = false;
+  $('login').hidden = true;
+  if (state.data) render();
   notice(message, isError ? 'error' : 'success');
 }
 
-function api(action, fields = {}) {
-  return new Promise((resolve, reject) => {
-    const request = {action, ...fields};
-    if (action !== 'login') {
-      if (!state.session || Date.now() >= state.session.until) {
-        endSession(SESSION_ERROR);
-        reject(new Error(SESSION_ERROR));
-        return;
-      }
-      request.token = state.session.token;
-    }
-    if (!globalThis.google?.script?.run) {
-      reject(new Error('Buka sistem melalui pautan web app Google Apps Script.'));
-      return;
-    }
-    google.script.run
-      .withSuccessHandler(response => {
-        if (request.token && request.token !== state.session?.token) {
-          reject(new Error(SESSION_ERROR));
-          return;
-        }
-        if (response?.ok === true) resolve(response.data);
-        else {
-          const message = response?.error || 'Respons pelayan tidak sah.';
-          if (request.token && message === SESSION_ERROR) endSession(message);
-          reject(new Error(message));
-        }
-      })
-      .withFailureHandler(error => reject(new Error(error?.message || 'Sambungan ke pelayan gagal.')))
-      .pialaApi(request);
+function requestServer(request) {
+  if (globalThis.google?.script?.run) {
+    return new Promise((resolve, reject) => {
+      google.script.run
+        .withSuccessHandler(resolve)
+        .withFailureHandler(error => reject(new Error(error?.message || 'Sambungan ke pelayan gagal.')))
+        .pialaApi(request);
+    });
+  }
+
+  return fetch(APPS_SCRIPT_URL, {
+    method: 'POST',
+    headers: {'Content-Type': 'text/plain;charset=UTF-8'},
+    credentials: 'omit',
+    body: JSON.stringify(request),
+    signal: AbortSignal.timeout(25000)
+  }).then(async response => {
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    return response.json();
+  }).catch(() => {
+    $('alternateAccess').hidden = false;
+    throw new Error('GitHub Pages tidak dapat menghubungi Apps Script. Buka pautan Apps Script di bawah atau semak deployment web app.');
   });
+}
+
+async function api(action, fields = {}) {
+  const request = {action, ...fields};
+  if (action !== 'login' && action !== 'publicDashboard') {
+    if (!state.session || Date.now() >= state.session.until) {
+      endSession(SESSION_ERROR);
+      throw new Error(SESSION_ERROR);
+    }
+    request.token = state.session.token;
+  }
+  const response = await requestServer(request);
+  if (request.token && request.token !== state.session?.token) throw new Error(SESSION_ERROR);
+  if (response?.ok === true) {
+    $('alternateAccess').hidden = true;
+    return response.data;
+  }
+  const message = response?.error || 'Respons pelayan tidak sah.';
+  if (request.token && message === SESSION_ERROR) {
+    endSession(message);
+    if (!state.data) {
+      try { await refresh(); } catch (_) { $('retry').hidden = false; }
+    }
+  }
+  throw new Error(message);
 }
 
 async function run(work, inEditor = false) {
@@ -234,7 +254,7 @@ async function run(work, inEditor = false) {
       $('editNotice').textContent = error.message;
     } else {
       notice(error.message, 'error');
-      if (state.session && !state.data) $('retry').hidden = false;
+      if (!state.data || (state.session && !state.data.user)) $('retry').hidden = false;
     }
   } finally {
     state.busy = false;
@@ -243,7 +263,12 @@ async function run(work, inEditor = false) {
 }
 
 async function refresh() {
-  state.data = await api('dashboard');
+  if (state.session) {
+    state.data = await api('dashboard');
+  } else {
+    state.publicData = await api('publicDashboard');
+    state.data = state.publicData;
+  }
   $('app').hidden = false;
   $('login').hidden = true;
   $('retry').hidden = true;
@@ -269,7 +294,7 @@ function currentYear() {
 function selectedPlayers() {
   return state.data.players.filter(row => String(row.tahun) === currentYear() &&
     row.kategori === state.category && (!state.kelas || row.kelas === state.kelas) &&
-    (state.data.user.admin || row.kelas === state.data.user.kelas))
+    (state.data.user?.admin || row.kelas === state.data.user.kelas))
     .sort((a, b) => nameOrder.compare(a.kelas, b.kelas) || nameOrder.compare(a.nama, b.nama));
 }
 
@@ -376,10 +401,13 @@ function showTable(container, headers, rows, title, empty) {
 
 function render() {
   const {user, classes} = state.data;
+  if (!user && state.view === 'players') state.view = 'matches';
   const isRoster = state.view === 'players';
-  const ownClass = classes.find(row => row.kelas === user.kelas);
-  if (!user.admin && ownClass) state.years.players = String(ownClass.tahun);
-  $('identity').textContent = user.admin ? 'Admin · ' + user.username : 'Guru Kelas · ' + user.kelas;
+  const ownClass = user && classes.find(row => row.kelas === user.kelas);
+  if (ownClass && !user.admin) state.years.players = String(ownClass.tahun);
+  $('identity').textContent = !user ? '' : user.admin ? 'Admin · ' + user.username : 'Guru Kelas · ' + user.kelas;
+  $('manage').hidden = Boolean(user);
+  $('logout').hidden = !user;
   $('yearLabel').hidden = isRoster && !user.admin;
   $('classLabel').hidden = !isRoster;
   options($('year'), YEARS, currentYear());
@@ -395,6 +423,7 @@ function render() {
   }
 
   $('tabs').querySelectorAll('button').forEach(item => {
+    item.hidden = item.dataset.view === 'players' && !user;
     if (item.dataset.view === state.view) item.setAttribute('aria-current', 'page');
     else item.removeAttribute('aria-current');
   });
@@ -435,7 +464,7 @@ function renderPlayers() {
 
 function renderMatches() {
   const matches = selectedMatches();
-  $('generate').hidden = !state.data.user.admin;
+  $('generate').hidden = !state.data.user?.admin;
   $('matchCount').textContent = matches.length + ' perlawanan · ' + matches.filter(completed).length + ' selesai';
   if (!matches.length) {
     $('matchList').replaceChildren(node('p', 'Tiada perlawanan untuk pilihan ini.', 'empty'));
@@ -449,7 +478,7 @@ function renderMatches() {
     const when = [match.tarikh && localDate(match.tarikh), match.masa && localTime(match.masa), match.gelanggang].filter(Boolean);
     card.append(node('span', matchStatus(match), 'tag' + style), score,
       node('p', when.join(' · ') || 'Butiran jadual belum diisi.', 'muted'));
-    if (state.data.user.admin) card.append(button('Kemas Kini', () => openMatch(match)));
+    if (state.data.user?.admin) card.append(button('Kemas Kini', () => openMatch(match)));
     return card;
   }));
 }
@@ -500,7 +529,7 @@ $('editForm').addEventListener('submit', event => {
   event.preventDefault();
   const {type, id} = state.edit;
   if (type === 'player') {
-    const kelas = state.data.user.admin ? $('editClass').value : state.data.user.kelas;
+    const kelas = state.data.user?.admin ? $('editClass').value : state.data.user.kelas;
     const kategori = $('editCategory').value;
     const payload = {kelas, kategori, nama: $('editName').value.trim(), nomborJersi: $('editJersey').value};
     if (id) payload.id = id;
@@ -777,6 +806,16 @@ function reloadDashboard() {
   });
 }
 $('refresh').addEventListener('click', reloadDashboard);
+$('manage').addEventListener('click', () => {
+  $('login').hidden = false;
+  $('loginForm').elements.username.focus();
+});
+$('cancelLogin').addEventListener('click', () => {
+  $('loginForm').reset();
+  $('login').hidden = true;
+  $('manage').focus();
+  notice('');
+});
 $('retryButton').addEventListener('click', reloadDashboard);
 $('logout').addEventListener('click', () => run(async () => {
   try {
@@ -786,6 +825,7 @@ $('logout').addEventListener('click', () => run(async () => {
     endSession(error.message === SESSION_ERROR ? SESSION_ERROR :
       'Anda telah log keluar daripada tab ini. Pelayan tidak dapat mengesahkan penamatan sesi.');
   }
+  await refresh();
 }));
 
 $('loginForm').addEventListener('submit', event => {
@@ -796,14 +836,15 @@ $('loginForm').addEventListener('submit', event => {
     saveSession({token: session.token, until: Date.now() + SESSION_MS});
     $('loginForm').reset();
     $('login').hidden = true;
+    state.view = 'players';
     await refresh();
-    if (!session.user.admin) {
-      state.years.competition = state.years.players;
-      render();
-    }
     notice('');
   });
 });
+
+$('appsScriptLink').href = APPS_SCRIPT_URL;
+$('appsScriptLink').target = '_blank';
+$('appsScriptLink').rel = 'noopener noreferrer';
 
 let cached;
 try { cached = JSON.parse(sessionStorage.getItem(SESSION)); } catch (_) {}
@@ -811,11 +852,17 @@ if (cached?.token && Number.isFinite(cached.until) && cached.until > Date.now())
   saveSession(cached);
   reloadDashboard();
 } else {
-  endSession(cached ? SESSION_ERROR : '');
+  endSession();
+  reloadDashboard();
+}
+
+function expireSession() {
+  endSession(SESSION_ERROR);
+  refresh().catch(() => { $('retry').hidden = false; });
 }
 
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden && state.session && Date.now() >= state.session.until) endSession(SESSION_ERROR);
+  if (!document.hidden && state.session && Date.now() >= state.session.until) expireSession();
 });
 </script>
 </body>

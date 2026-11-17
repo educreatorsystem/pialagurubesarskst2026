@@ -1,26 +1,31 @@
 const PGB = {
+  spreadsheetId: '11R0ArL5Mdet_wI37yG8NFsts1FxILoT_vSvCrtGc1mI',
   timezone: 'Asia/Kuala_Lumpur',
-  classes: ['PGB_KELAS', ['kelas', 'tahun']],
-  players: ['PGB_PEMAIN', ['id', 'tahun', 'kategori', 'kelas', 'nama', 'nomborJersi', 'dikemasKiniOleh', 'dikemasKiniPada']],
-  matches: ['PGB_PERLAWANAN', ['id', 'tahun', 'kategori', 'pasukanA', 'pasukanB', 'tarikh', 'masa', 'gelanggang', 'skorA', 'skorB']]
+  classes: ['PGB_KELAS', ['kelas', 'tahun'], 1109624177],
+  players: ['PGB_PEMAIN', ['id', 'tahun', 'kategori', 'kelas', 'nama', 'nomborJersi', 'dikemasKiniOleh', 'dikemasKiniPada'], 996137308],
+  matches: ['PGB_PERLAWANAN', ['id', 'tahun', 'kategori', 'pasukanA', 'pasukanB', 'tarikh', 'masa', 'gelanggang', 'skorA', 'skorB'], 422470037]
 };
 
 // Jalankan sekali dari editor Apps Script.
 function setupPialaGuruBesar() {
   const book = spreadsheet_();
-  [PGB.classes, PGB.players, PGB.matches].forEach(([name, headers]) => {
-    const sheet = book.getSheetByName(name) || book.insertSheet(name);
+  [PGB.classes, PGB.players, PGB.matches].forEach(definition => {
+    const [name, headers] = definition;
+    const sheet = configuredTab_(book, definition);
+    if (!sheet) fail_('Tab ' + name + ' tidak ditemui. Semak ID lembaran dan nama tab.');
     if (!sheet.getLastRow()) {
       sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
       sheet.setFrozenRows(1);
-      if (name === PGB.players[0]) sheet.getRange('F:F').setNumberFormat('@');
-      if (name === PGB.matches[0]) sheet.getRange('F:G').setNumberFormat('@');
+      if (definition === PGB.players) sheet.getRange('F:F').setNumberFormat('@');
+      if (definition === PGB.matches) sheet.getRange('F:G').setNumberFormat('@');
     }
     verifyHeaders_(sheet, headers);
   });
+  return 'Konfigurasi tiga tab Piala Guru Besar telah disemak.';
 }
 
-function doGet() {
+function doGet(event) {
+  if (event?.parameter?.action === 'health') return json_({ ok: true, data: { version: 3 } });
   try {
     return HtmlService.createHtmlOutputFromFile('Index')
       .setTitle('Piala Guru Besar SK Sungai Tiram')
@@ -28,6 +33,24 @@ function doGet() {
   } catch (error) {
     return HtmlService.createHtmlOutput('Apps Script Piala Guru Besar tersedia. Tambah fail Index.html untuk membuka sistem.');
   }
+}
+
+// GitHub Pages menghantar JSON sebagai text/plain untuk permintaan POST ringkas.
+function doPost(event) {
+  const body = event?.postData?.contents || '';
+  if (!body || body.length > 20000) return json_({ ok: false, error: 'Permintaan tidak sah.' });
+  let request;
+  try {
+    request = JSON.parse(body);
+  } catch (_) {
+    return json_({ ok: false, error: 'Format permintaan tidak sah.' });
+  }
+  return json_(pialaApi(request));
+}
+
+function json_(result) {
+  return ContentService.createTextOutput(JSON.stringify(result))
+    .setMimeType(ContentService.MimeType.JSON);
 }
 
 // Index.html memanggil google.script.run.pialaApi({ action, token, ...medan }).
@@ -42,6 +65,9 @@ function pialaApi(request) {
 }
 
 function dispatch_(request) {
+  if (request.action === 'publicDashboard') {
+    return { user: null, classes: [], players: [], matches: publicMatches_() };
+  }
   const cache = CacheService.getScriptCache();
   if (request.action === 'login') return login_(request, cache);
   if (request.action === 'logout') {
@@ -67,6 +93,12 @@ function dispatch_(request) {
     if (request.action === 'generateMatches') return generateMatches_(request);
     return updateMatch_(request);
   });
+}
+
+function publicMatches_() {
+  return rows_(PGB.matches).map(({
+    tahun, kategori, pasukanA, pasukanB, tarikh, masa, gelanggang, skorA, skorB
+  }) => ({ tahun, kategori, pasukanA, pasukanB, tarikh, masa, gelanggang, skorA, skorB }));
 }
 
 function login_(request, cache) {
@@ -120,7 +152,7 @@ function roster_(request, user) {
   const id = existing ? existing.id : Utilities.getUuid();
   const row = [id, team.tahun, kategori, team.kelas, nama, jersi,
     user.username, new Date().toISOString()];
-  writeRows_(sheet, existing ? existing.rowNumber : sheet.getLastRow() + 1, [row]);
+  writeRows_(sheet, existing ? existing.rowNumber : sheet.getLastRow() + 1, [row], 1);
   return { id };
 }
 
@@ -142,7 +174,7 @@ function generateMatches_(request) {
     }
   }
   const sheet = sheet_(PGB.matches);
-  writeRows_(sheet, sheet.getLastRow() + 1, matches);
+  writeRows_(sheet, sheet.getLastRow() + 1, matches, 2);
   return { jumlah: matches.length };
 }
 
@@ -161,8 +193,9 @@ function updateMatch_(request) {
   if (masa && !/^([01]\d|2[0-3]):[0-5]\d$/.test(masa)) fail_('Masa tidak sah.');
   if (gelanggang.length > 100 || /^[=+@'-]/.test(gelanggang)) fail_('Nama gelanggang tidak sah.');
 
-  sheet_(PGB.matches).getRange(match.rowNumber, 6, 1, 5)
-    .setValues([[tarikh, masa, gelanggang, skorA, skorB]]);
+  const sheet = sheet_(PGB.matches);
+  sheet.getRange(match.rowNumber, 6, 1, 2).setNumberFormat('@');
+  sheet.getRange(match.rowNumber, 6, 1, 5).setValues([[tarikh, masa, gelanggang, skorA, skorB]]);
   return { id: match.id };
 }
 
@@ -197,15 +230,17 @@ function verifyHeaders_(sheet, headers) {
 }
 
 function spreadsheet_() {
-  const id = (PropertiesService.getScriptProperties().getProperty('PGB_SPREADSHEET_ID') || '').trim();
-  if (!id) fail_('Tetapkan PGB_SPREADSHEET_ID dalam Script Properties.');
-  return SpreadsheetApp.openById(id);
+  return SpreadsheetApp.openById(PGB.spreadsheetId);
 }
 
-function sheet_([name, headers]) {
-  const sheet = spreadsheet_().getSheetByName(name);
-  if (!sheet) fail_('Jalankan setupPialaGuruBesar dahulu.');
-  verifyHeaders_(sheet, headers);
+function configuredTab_(spreadsheet, [name, , gid]) {
+  return spreadsheet.getSheetById(gid) || spreadsheet.getSheetByName(name);
+}
+
+function sheet_(definition) {
+  const sheet = configuredTab_(spreadsheet_(), definition);
+  if (!sheet) fail_('Tab ' + definition[0] + ' tidak ditemui.');
+  verifyHeaders_(sheet, definition[1]);
   return sheet;
 }
 
@@ -228,13 +263,12 @@ function rows_(definition) {
     .filter(row => row[headers[0]] !== '');
 }
 
-function writeRows_(sheet, start, rows) {
+function writeRows_(sheet, start, rows, textColumns) {
   const requiredRows = start + rows.length - 1;
   if (requiredRows > sheet.getMaxRows()) {
     sheet.insertRowsAfter(sheet.getMaxRows(), requiredRows - sheet.getMaxRows());
   }
-  if (sheet.getName() === PGB.matches[0]) sheet.getRange(start, 6, rows.length, 2).setNumberFormat('@');
-  if (sheet.getName() === PGB.players[0]) sheet.getRange(start, 6, rows.length, 1).setNumberFormat('@');
+  sheet.getRange(start, 6, rows.length, textColumns).setNumberFormat('@');
   sheet.getRange(start, 1, rows.length, rows[0].length).setValues(rows);
 }
 
